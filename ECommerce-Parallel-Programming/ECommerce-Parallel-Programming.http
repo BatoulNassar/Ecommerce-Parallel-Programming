@@ -1,0 +1,6 @@
+@ECommerce_Parallel_Programming_HostAddress = http://localhost:5289
+
+GET {{ECommerce_Parallel_Programming_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

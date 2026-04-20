@@ -22,7 +22,7 @@ namespace ECommerce_Parallel_Programming.Controllers
         }
 
         [HttpPost]
-        public async Task <IActionResult> BuyProduct(int ProductId ,int UserId ,int quantity) {
+        public async Task <IActionResult> BuyProduct([FromQuery] int ProductId , [FromQuery] int UserId , [FromQuery] int quantity) {
             await _use.BuyProduct(UserId, ProductId, quantity);
             return Ok(200);
         }

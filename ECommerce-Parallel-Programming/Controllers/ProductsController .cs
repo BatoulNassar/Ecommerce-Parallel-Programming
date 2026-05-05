@@ -21,10 +21,18 @@ namespace ECommerce_Parallel_Programming.Controllers
             return Ok(products);
         }
 
-        [HttpPost]
-        public async Task <IActionResult> BuyProduct([FromQuery] int ProductId , [FromQuery] int UserId , [FromQuery] int quantity) {
+        [HttpPost("buy-with-thread")]
+        public async Task<IActionResult> BuyWithThread([FromQuery] int ProductId, [FromQuery] int UserId, [FromQuery] int quantity)
+        {
             await _use.BuyProduct(UserId, ProductId, quantity);
-            return Ok(200);
+            return Ok("Success with protection");
+        }
+
+        [HttpPost("buy-without-thread")]
+        public async Task<IActionResult> BuyWithoutThread([FromQuery] int ProductId, [FromQuery] int UserId, [FromQuery] int quantity)
+        {
+            await _use.BuyProductWithoutThread(UserId, ProductId, quantity);
+            return Ok("Success without protection");
         }
     }
 }

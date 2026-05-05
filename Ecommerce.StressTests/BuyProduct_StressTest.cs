@@ -13,25 +13,26 @@ namespace Ecommerce.StressTests
         {
             using var httpClient = new HttpClient();
 
-            var body = JsonSerializer.Serialize(new
+            var protectedScenario = Scenario.Create("Protected Scenario", async context =>
             {
-                productId = 1,
-                quantity = 1
-            });
-
-            var scenario = Scenario.Create("E-Commerce Purchase Scenario", async context =>
-            {
-                var url = "https://localhost:7036/api/Products?ProductId=1&UserId=1&quantity=1";
+                var url = "https://localhost:7036/api/Products/buy-with-thread?ProductId=1&UserId=1&quantity=1";
                 var request = Http.CreateRequest("POST", url);
                 return await Http.Send(httpClient, request);
             })
-            .WithLoadSimulations(
+            .WithLoadSimulations(Simulation.KeepConstant(copies: 1000, during: TimeSpan.FromSeconds(30)));
 
-                Simulation.KeepConstant(copies: 100, during: TimeSpan.FromMinutes(1))
-            );
+           
+            var unprotectedScenario = Scenario.Create("Unprotected Scenario", async context =>
+            {
+                var url = "https://localhost:7036/api/Products/buy-without-thread?ProductId=1&UserId=1&quantity=1";
+                var request = Http.CreateRequest("POST", url);
+                return await Http.Send(httpClient, request);
+            })
+            .WithLoadSimulations(Simulation.KeepConstant(copies: 1000, during: TimeSpan.FromSeconds(30)));
 
+           
             NBomberRunner
-                .RegisterScenarios(scenario)
+                .RegisterScenarios(unprotectedScenario) 
                 .Run();
         }
     }

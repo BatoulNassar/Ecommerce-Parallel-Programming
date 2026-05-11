@@ -11,5 +11,7 @@ namespace Ecommerce.Application.Interfaces
     {
         
         public Task AddOrder(Order order);
+        Task UpdateOrder(Order order);
     }
-}
+
+    }

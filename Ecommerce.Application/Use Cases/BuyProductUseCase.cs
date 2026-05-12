@@ -185,19 +185,14 @@ Total Price: {order.TotalPrice}
 Date: {DateTime.Now}
 
 ===================";
-
-                // محاكاة عملية ثقيلة
-                //await Task.Delay(5000);
-
-                // إنشاء ملف الفاتورة
+              
                 await File.WriteAllTextAsync(fullPath, invoiceContent);
 
                 Console.WriteLine($"Invoice Created: {fileName}");
 
-                // جلب Repository جديد من DI
+              
                 var repo = sp.GetRequiredService<IOrderRepository>();
 
-                // تحديث حالة الطلب
                 order.Status = "Completed";
 
                 await repo.UpdateOrder(order);
@@ -220,15 +215,14 @@ Date: {DateTime.Now}
             if (product.Stock < quantity)
                 return "Failed: Not enough stock";
 
-            // المستخدم ينتظر كل العمليات
             await Task.Delay(5000);
 
-            // تحديث المخزون
+          
             product.Stock -= quantity;
 
             await _repo.UpdateStockForProduct(product);
 
-            // إنشاء الطلب
+        
             var order = new Order
             {
                 UserId = UserId,
@@ -243,7 +237,7 @@ Date: {DateTime.Now}
 
             Console.WriteLine("Generating Invoice...");
 
-            // إنشاء مجلد الفواتير
+            
             var folderPath = Path.Combine(
                 Directory.GetCurrentDirectory(),
                 "Invoices");
@@ -253,12 +247,12 @@ Date: {DateTime.Now}
                 Directory.CreateDirectory(folderPath);
             }
 
-            // اسم الفاتورة
+            
             var fileName = $"Blocking_Invoice_Order_{order.Id}.txt";
 
             var fullPath = Path.Combine(folderPath, fileName);
 
-            // محتوى الفاتورة
+           
             var invoiceContent =
         $@"===== BLOCKING INVOICE =====
 
@@ -276,10 +270,7 @@ Date: {DateTime.Now}
 
 ==============================";
 
-            // المستخدم ينتظر إنشاء الفاتورة
-            //await Task.Delay(5000);
 
-            // إنشاء ملف الفاتورة
             await File.WriteAllTextAsync(fullPath, invoiceContent);
 
             Console.WriteLine($"Invoice Created: {fileName}");
@@ -288,34 +279,5 @@ Date: {DateTime.Now}
 
             return "Order Completed Successfully (BLOCKING)";
         }
-        //public async Task<string> BuyProduct_Blocking(int UserId, int ProductId, int quantity)
-        //{
-        //    var product = await _repo.GetProductById(ProductId);
-
-        //    if (product.Stock < quantity)
-        //        return "Failed: Not enough stock";
-
-        //    await Task.Delay(5000); 
-
-        //    product.Stock -= quantity;
-        //    await _repo.UpdateStockForProduct(product);
-
-        //    var order = new Order
-        //    {
-        //        UserId = UserId,
-        //        ProductId = ProductId,
-        //        Quantity = quantity,
-        //        OrderDate = DateTime.Now,
-        //        TotalPrice = product.Price * quantity,
-        //        Status = "Completed"
-        //    };
-
-        //    await _orderRepo.AddOrder(order);
-
-
-        //    await Task.Delay(5000);
-
-        //    return "Order Completed Successfully (BLOCKING)";
-        //}
     }
 }

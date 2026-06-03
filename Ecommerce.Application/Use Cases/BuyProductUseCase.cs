@@ -19,26 +19,54 @@ namespace Ecommerce.Application.Use_Cases
         private static readonly int _coreCount = Environment.ProcessorCount;
         private static readonly int _maxConcurrency = _coreCount * (1 + 4);
 
-        private static readonly SemaphoreSlim _capacityThrottle =
-            new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
+        private static readonly SemaphoreSlim _capacityThrottle =new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
 
-        private static readonly SemaphoreSlim _asyncLock =
-            new SemaphoreSlim(1, 1);
+        private static readonly SemaphoreSlim _asyncLock = new SemaphoreSlim(1, 1);
 
-        public BuyProductUseCase(
-            IProductRepository repo,
-            IOrderRepository orderRepo,
-            IBackgroundTaskQueue queue)
+        public BuyProductUseCase(IProductRepository repo,IOrderRepository orderRepo, IBackgroundTaskQueue queue)
         {
             _repo = repo;
             _orderRepo = orderRepo;
             _queue = queue;
         }
 
-        // ================================
-        // ❌ PROBLEM VERSION (BEFORE)
-        // ================================
-        public async Task BuyProduct(int UserId, int ProductId, int quantity)
+        // ==========================================
+        // Before Race Condition and Resource Management
+        // ==========================================
+        public async Task BuyProduct_Before_RaceCondition_and_ResourceManagement(int UserId, int ProductId, int quantity)
+        {
+
+            var product = await _repo.GetProductById(ProductId);
+
+            if (product.Stock >= quantity)
+            {
+                await Task.Delay(10);
+
+                product.Stock -= quantity;
+
+                await _repo.UpdateStockForProduct(product);
+
+                var order = new Order
+                {
+                    UserId = UserId,
+                    ProductId = ProductId,
+                    Quantity = quantity,
+                    OrderDate = DateTime.Now,
+                    TotalPrice = product.Price * quantity,
+                    Status = "Completed"
+                };
+                await _orderRepo.AddOrder(order);
+            }
+            else
+            {
+                throw new Exception("The requested quantity is not available in stock.");
+            }
+        }
+
+        // ==========================================
+        // After Race Conditon and Resource Management
+        // ==========================================
+        public async Task BuyProduct_After_RaceCondition_and_ResourceManagement(int UserId, int ProductId, int quantity)
         {
             await _capacityThrottle.WaitAsync();
             try
@@ -53,24 +81,16 @@ namespace Ecommerce.Application.Use_Cases
                         product.Stock -= quantity;
                         await _repo.UpdateStockForProduct(product);
 
-                        var Order = new Order
+                        var order = new Order
                         {
                             UserId = UserId,
                             ProductId = ProductId,
                             Quantity = quantity,
                             OrderDate = DateTime.Now,
                             TotalPrice = product.Price * quantity,
+                            Status = "Completed"
                         };
-
-                        await _orderRepo.AddOrder(Order);
-
-                     
-                        Console.WriteLine("Generating Invoice...");
-                        await File.WriteAllTextAsync(
-                            $"invoice_{Order.Id}.txt",
-                            $"Invoice For User {UserId} - Total = {Order.TotalPrice}");
-
-                        Console.WriteLine("Invoice Generated");
+                        await _orderRepo.AddOrder(order);
                     }
                     else
                     {
@@ -87,39 +107,7 @@ namespace Ecommerce.Application.Use_Cases
                 _capacityThrottle.Release();
             }
         }
-
-        // ================================
-        // ❌ TEST VERSION (optional)
-        // ================================
-        public async Task BuyProductWithoutThread(int UserId, int ProductId, int quantity)
-        {
-            var product = await _repo.GetProductById(ProductId);
-
-            if (product.Stock >= quantity)
-            {
-                product.Stock -= quantity;
-
-                await _repo.UpdateStockForProduct(product);
-
-                var Order = new Order
-                {
-                    UserId = UserId,
-                    ProductId = ProductId,
-                    Quantity = quantity,
-                    OrderDate = DateTime.Now,
-                    TotalPrice = product.Price * quantity,
-                };
-
-                await _orderRepo.AddOrder(Order);
-            }
-            else
-            {
-                throw new Exception("The requested quantity is not available in stock.");
-            }
-        }
-
       
-
         public async Task<string> BuyProduct_WithAsyncQueue(int UserId, int ProductId, int quantity)
         {
             var product = await _repo.GetProductById(ProductId);

@@ -16,6 +16,7 @@ namespace ECommerce_Parallel_Programming.Controllers
         private readonly SalesBatchProcessingService _service;
         private readonly ConcurrencyDemoService _concurrency;
         private readonly TransactionDemoService _transaction;
+        private readonly BenchmarkDemoService _benchmark;
         private readonly IServiceScopeFactory _scopeFactory;
 
         public ProductsController(
@@ -24,6 +25,7 @@ namespace ECommerce_Parallel_Programming.Controllers
             SalesBatchProcessingService service,
             ConcurrencyDemoService concurrency,
             TransactionDemoService transaction,
+            BenchmarkDemoService benchmark,
             IServiceScopeFactory scopeFactory)
         {
             _useCase = useCase;
@@ -31,6 +33,7 @@ namespace ECommerce_Parallel_Programming.Controllers
             _service = service;
             _concurrency = concurrency;
             _transaction = transaction;
+            _benchmark = benchmark;
             _scopeFactory = scopeFactory;
         }
 
@@ -523,6 +526,105 @@ namespace ECommerce_Parallel_Programming.Controllers
                 Phase2_WithTransaction_Failure = withTransactionResult,
                 Phase3_WithTransaction_Success = successResult,
                 Phase4_ConcurrentACID = concurrentResult
+            });
+        }
+
+        // ==========================================================
+        // TASK 10: Benchmarking & Bottleneck Analysis
+        // Follows the lecture's 4-step process:
+        //   1. Benchmark (measure BEFORE)
+        //   2. Identify bottleneck (via tracing/timing)
+        //   3. Apply optimization
+        //   4. Benchmark again (measure AFTER) — show improvement
+        // ==========================================================
+        [HttpGet("test-benchmark")]
+        public async Task<IActionResult> TestBenchmark()
+        {
+            // ============================================
+            // BOTTLENECK 1: Sequential Order Processing
+            // ============================================
+
+            // Step 1: BEFORE — measure sequential processing
+            var before1 = await _benchmark.ProcessOrders_Sequential();
+
+            // Step 2: AFTER — measure parallel batch processing
+            var after1 = await _benchmark.ProcessOrders_Optimized();
+
+            double improvement1 = before1.TotalTimeMs > 0
+                ? Math.Round((1 - (double)after1.TotalTimeMs / before1.TotalTimeMs) * 100, 1)
+                : 0;
+
+            var bottleneck1 = new
+            {
+                Name = "Bottleneck 1: Sequential Order Processing",
+                Description = "Orders are processed one-by-one in a loop. Each has 10ms I/O delay. N orders = N * 10ms.",
+                BottleneckFound = before1.Trace.FirstOrDefault(t => t.Step.Contains("BOTTLENECK"))?.Step,
+                Before = new
+                {
+                    before1.Method,
+                    before1.TotalTimeMs,
+                    before1.OrderCount,
+                    before1.Trace
+                },
+                Optimization = "Group orders into batches of 50. Process all batches in PARALLEL using Task.WhenAll. N orders = ceil(N/50) * 10ms (all at once).",
+                After = new
+                {
+                    after1.Method,
+                    after1.TotalTimeMs,
+                    after1.OrderCount,
+                    after1.Trace
+                },
+                ImprovementPercent = $"{improvement1}%",
+                SpeedupFactor = before1.TotalTimeMs > 0
+                    ? $"{Math.Round((double)before1.TotalTimeMs / Math.Max(after1.TotalTimeMs, 1), 1)}x faster"
+                    : "N/A"
+            };
+
+            // ============================================
+            // BOTTLENECK 2: N+1 Query Problem (Products)
+            // ============================================
+
+            // Step 1: BEFORE — fetch products one-by-one
+            var before2 = await _benchmark.FetchProducts_Sequential();
+
+            // Step 2: AFTER — fetch all in one query
+            var after2 = await _benchmark.FetchProducts_Optimized();
+
+            double improvement2 = before2.TotalTimeMs > 0
+                ? Math.Round((1 - (double)after2.TotalTimeMs / before2.TotalTimeMs) * 100, 1)
+                : 0;
+
+            var bottleneck2 = new
+            {
+                Name = "Bottleneck 2: N+1 Query Problem (Sequential DB Fetches)",
+                Description = "Products are fetched one-by-one in a loop (10 separate DB queries). This is the classic N+1 problem from the lecture (Slide 7).",
+                BottleneckFound = before2.Trace.FirstOrDefault(t => t.Step.Contains("BOTTLENECK"))?.Step,
+                Before = new
+                {
+                    before2.Method,
+                    before2.TotalTimeMs,
+                    before2.OrderCount,
+                    before2.Trace
+                },
+                Optimization = "Replace N separate queries with 1 batch query using WHERE IN (...). 10 queries become 1 query.",
+                After = new
+                {
+                    after2.Method,
+                    after2.TotalTimeMs,
+                    after2.OrderCount,
+                    after2.Trace
+                },
+                ImprovementPercent = $"{improvement2}%",
+                SpeedupFactor = before2.TotalTimeMs > 0
+                    ? $"{Math.Round((double)before2.TotalTimeMs / Math.Max(after2.TotalTimeMs, 1), 1)}x faster"
+                    : "N/A"
+            };
+
+            return Ok(new
+            {
+                Task = "Task 10: Benchmarking & Bottleneck Analysis",
+                Summary = "Measured key operations, identified 2 bottlenecks, applied optimizations, and compared before/after.",
+                Bottlenecks = new[] { bottleneck1, bottleneck2 }
             });
         }
     }

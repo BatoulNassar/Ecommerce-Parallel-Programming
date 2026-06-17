@@ -44,6 +44,11 @@ builder.Services.AddScoped<ConcurrencyDemoService>();
 builder.Services.AddScoped<TransactionDemoService>();
 
 // ======================
+// Task 10: Benchmarking Service
+// ======================
+builder.Services.AddScoped<BenchmarkDemoService>();
+
+// ======================
 // Background Queue (AOP idea part)
 // ======================
 builder.Services.AddHostedService<QueuedHostedService>();

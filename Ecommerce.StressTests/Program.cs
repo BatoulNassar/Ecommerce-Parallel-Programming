@@ -1,8 +1,10 @@
-﻿// See https://aka.ms/new-console-template for more information
 using Ecommerce.StressTests;
 
-Console.WriteLine("Starting the stress test on the procurement system...");
+Console.WriteLine("========================================");
+Console.WriteLine("  Ecommerce Stress Testing Suite");
+Console.WriteLine("  Task 9: Stress Testing (100+ users)");
+Console.WriteLine("========================================\n");
 
 BuyProduct_StressTest.Run();
-Console.WriteLine("The test has been completed.");
-Console.ReadKey();
+
+Console.WriteLine("\nStress test completed.");

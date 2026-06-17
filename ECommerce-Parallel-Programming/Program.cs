@@ -39,6 +39,17 @@ builder.Services.AddScoped<SalesBatchProcessingService>();
 builder.Services.AddHostedService<QueuedHostedService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
+// Distributed Cache (Redis)
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis")
+                            ?? "localhost:6379";
+    options.InstanceName = "Ecommerce:";
+});
+
+// HttpClient for the Round Robin distributor
+builder.Services.AddHttpClient();
+
 // ======================
 // Controllers + Swagger
 // ======================

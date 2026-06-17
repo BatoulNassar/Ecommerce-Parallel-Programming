@@ -19,6 +19,11 @@ namespace Ecommerce.Infrastructure.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Product>()
+                .Property(p => p.RowVersion)
+                .IsRowVersion();
+
             modelBuilder.Entity<Product>().HasData(
                 new Product
                 {

@@ -34,6 +34,11 @@ builder.Services.AddScoped<BuyProductUseCase>();
 builder.Services.AddScoped<SalesBatchProcessingService>();
 
 // ======================
+// Task 7: Concurrency Control Service
+// ======================
+builder.Services.AddScoped<ConcurrencyDemoService>();
+
+// ======================
 // Background Queue (AOP idea part)
 // ======================
 builder.Services.AddHostedService<QueuedHostedService>();

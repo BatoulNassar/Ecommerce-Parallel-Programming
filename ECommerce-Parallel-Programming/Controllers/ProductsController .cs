@@ -14,15 +14,21 @@ namespace ECommerce_Parallel_Programming.Controllers
         private readonly GetProductsUseCase _useCase;
         private readonly BuyProductUseCase _use;
         private readonly SalesBatchProcessingService _service;
+        private readonly ConcurrencyDemoService _concurrency;
+        private readonly IServiceScopeFactory _scopeFactory;
 
         public ProductsController(
             GetProductsUseCase useCase,
             BuyProductUseCase use,
-            SalesBatchProcessingService service)
+            SalesBatchProcessingService service,
+            ConcurrencyDemoService concurrency,
+            IServiceScopeFactory scopeFactory)
         {
             _useCase = useCase;
             _use = use;
             _service = service;
+            _concurrency = concurrency;
+            _scopeFactory = scopeFactory;
         }
 
         // =========================
@@ -171,6 +177,171 @@ namespace ECommerce_Parallel_Programming.Controllers
             Console.WriteLine($"WITH BATCH TIME: {sw.ElapsedMilliseconds} ms");
 
             return Ok("Check Console Output");
+        }
+
+        // ==========================================================
+        // TASK 7: Concurrency Control — Optimistic Lock (RowVersion)
+        // ==========================================================
+        [HttpPost("buy-optimistic-lock")]
+        public async Task<IActionResult> BuyOptimisticLock(
+            [FromQuery] int ProductId, [FromQuery] int UserId, [FromQuery] int quantity)
+        {
+            try
+            {
+                var result = await _concurrency.BuyWithOptimisticLock(UserId, ProductId, quantity);
+                var port = HttpContext.Connection.LocalPort;
+                return Ok($"[Port {port}] {result}");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // ==========================================================
+        // TASK 7: Concurrency Control — Pessimistic Distributed Lock
+        // ==========================================================
+        [HttpPost("buy-distributed-lock")]
+        public async Task<IActionResult> BuyDistributedLock(
+            [FromQuery] int ProductId, [FromQuery] int UserId, [FromQuery] int quantity)
+        {
+            try
+            {
+                var result = await _concurrency.BuyWithPessimisticLock(UserId, ProductId, quantity);
+                var port = HttpContext.Connection.LocalPort;
+                return Ok($"[Port {port}] {result}");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // ==========================================================
+        // TASK 7: Test — Compare No Lock vs Optimistic vs Distributed
+        // Each concurrent task gets its own DI scope (= own DbContext),
+        // simulating real concurrent HTTP requests from different users.
+        // ==========================================================
+        [HttpGet("test-concurrency-control")]
+        public async Task<IActionResult> TestConcurrencyControl(
+            [FromQuery] int productId = 1,
+            [FromQuery] int totalRequests = 50)
+        {
+            int initialStock = 200;
+            int successCount, failCount;
+
+            // ---- TEST 1: No Lock (Race Condition) ----
+            await _concurrency.ResetProductStock(productId, initialStock);
+
+            successCount = 0; failCount = 0;
+            var swNoLock = Stopwatch.StartNew();
+
+            var tasksNoLock = Enumerable.Range(1, totalRequests).Select(async i =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var useCase = scope.ServiceProvider.GetRequiredService<BuyProductUseCase>();
+                try
+                {
+                    await useCase.BuyProduct_Before_RaceCondition_and_ResourceManagement(
+                        UserId: (i % 2) + 1, ProductId: productId, quantity: 1);
+                    Interlocked.Increment(ref successCount);
+                }
+                catch { Interlocked.Increment(ref failCount); }
+            });
+            await Task.WhenAll(tasksNoLock);
+            swNoLock.Stop();
+
+            var stockAfterNoLock = await _concurrency.GetProductStock(productId);
+            int expectedStock = initialStock - successCount;
+
+            var noLockResult = new
+            {
+                Scenario = "No Lock (Race Condition)",
+                TimeTakenMs = swNoLock.ElapsedMilliseconds,
+                SuccessOrders = successCount,
+                FailedOrders = failCount,
+                ExpectedStock = expectedStock,
+                ActualStock = stockAfterNoLock,
+                DataCorrupted = stockAfterNoLock != expectedStock
+            };
+
+            // ---- TEST 2: Optimistic Lock (RowVersion) ----
+            await _concurrency.ResetProductStock(productId, initialStock);
+
+            successCount = 0; failCount = 0;
+            var swOptimistic = Stopwatch.StartNew();
+
+            var tasksOptimistic = Enumerable.Range(1, totalRequests).Select(async i =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<ConcurrencyDemoService>();
+                try
+                {
+                    await svc.BuyWithOptimisticLock(
+                        userId: (i % 2) + 1, productId: productId, quantity: 1);
+                    Interlocked.Increment(ref successCount);
+                }
+                catch { Interlocked.Increment(ref failCount); }
+            });
+            await Task.WhenAll(tasksOptimistic);
+            swOptimistic.Stop();
+
+            var stockAfterOptimistic = await _concurrency.GetProductStock(productId);
+            expectedStock = initialStock - successCount;
+
+            var optimisticResult = new
+            {
+                Scenario = "Optimistic Lock (RowVersion)",
+                TimeTakenMs = swOptimistic.ElapsedMilliseconds,
+                SuccessOrders = successCount,
+                FailedOrders = failCount,
+                ExpectedStock = expectedStock,
+                ActualStock = stockAfterOptimistic,
+                DataCorrupted = stockAfterOptimistic != expectedStock
+            };
+
+            // ---- TEST 3: Pessimistic Distributed Lock (sp_getapplock) ----
+            await _concurrency.ResetProductStock(productId, initialStock);
+
+            successCount = 0; failCount = 0;
+            var swPessimistic = Stopwatch.StartNew();
+
+            var tasksPessimistic = Enumerable.Range(1, totalRequests).Select(async i =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<ConcurrencyDemoService>();
+                try
+                {
+                    await svc.BuyWithPessimisticLock(
+                        userId: (i % 2) + 1, productId: productId, quantity: 1);
+                    Interlocked.Increment(ref successCount);
+                }
+                catch { Interlocked.Increment(ref failCount); }
+            });
+            await Task.WhenAll(tasksPessimistic);
+            swPessimistic.Stop();
+
+            var stockAfterPessimistic = await _concurrency.GetProductStock(productId);
+            expectedStock = initialStock - successCount;
+
+            var pessimisticResult = new
+            {
+                Scenario = "Pessimistic Distributed Lock (sp_getapplock)",
+                TimeTakenMs = swPessimistic.ElapsedMilliseconds,
+                SuccessOrders = successCount,
+                FailedOrders = failCount,
+                ExpectedStock = expectedStock,
+                ActualStock = stockAfterPessimistic,
+                DataCorrupted = stockAfterPessimistic != expectedStock
+            };
+
+            var port = HttpContext.Connection.LocalPort;
+            return Ok(new
+            {
+                InstancePort = port,
+                TotalConcurrentRequests = totalRequests,
+                Results = new[] { noLockResult, optimisticResult, pessimisticResult }
+            });
         }
     }
 }

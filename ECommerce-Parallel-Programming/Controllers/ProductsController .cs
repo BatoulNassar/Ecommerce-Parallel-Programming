@@ -15,6 +15,7 @@ namespace ECommerce_Parallel_Programming.Controllers
         private readonly BuyProductUseCase _use;
         private readonly SalesBatchProcessingService _service;
         private readonly ConcurrencyDemoService _concurrency;
+        private readonly TransactionDemoService _transaction;
         private readonly IServiceScopeFactory _scopeFactory;
 
         public ProductsController(
@@ -22,12 +23,14 @@ namespace ECommerce_Parallel_Programming.Controllers
             BuyProductUseCase use,
             SalesBatchProcessingService service,
             ConcurrencyDemoService concurrency,
+            TransactionDemoService transaction,
             IServiceScopeFactory scopeFactory)
         {
             _useCase = useCase;
             _use = use;
             _service = service;
             _concurrency = concurrency;
+            _transaction = transaction;
             _scopeFactory = scopeFactory;
         }
 
@@ -341,6 +344,185 @@ namespace ECommerce_Parallel_Programming.Controllers
                 InstancePort = port,
                 TotalConcurrentRequests = totalRequests,
                 Results = new[] { noLockResult, optimisticResult, pessimisticResult }
+            });
+        }
+
+        // ==========================================================
+        // TASK 8: Transaction Integrity — Buy WITHOUT transaction
+        // ==========================================================
+        [HttpPost("buy-without-transaction")]
+        public async Task<IActionResult> BuyWithoutTransaction(
+            [FromQuery] int ProductId, [FromQuery] int UserId,
+            [FromQuery] int quantity, [FromQuery] bool simulateFailure = false)
+        {
+            try
+            {
+                var result = await _transaction.BuyWithoutTransaction(UserId, ProductId, quantity, simulateFailure);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // ==========================================================
+        // TASK 8: Transaction Integrity — Buy WITH transaction (ACID)
+        // ==========================================================
+        [HttpPost("buy-with-transaction")]
+        public async Task<IActionResult> BuyWithTransaction(
+            [FromQuery] int ProductId, [FromQuery] int UserId,
+            [FromQuery] int quantity, [FromQuery] bool simulateFailure = false)
+        {
+            try
+            {
+                var result = await _transaction.BuyWithTransaction(UserId, ProductId, quantity, simulateFailure);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // ==========================================================
+        // TASK 8: Test — Compare WITHOUT vs WITH transaction
+        // Simulates a failure mid-operation and checks data integrity
+        // ==========================================================
+        [HttpGet("test-transaction-integrity")]
+        public async Task<IActionResult> TestTransactionIntegrity(
+            [FromQuery] int productId = 1)
+        {
+            int initialStock = 200;
+
+            // ---- PHASE 1: WITHOUT Transaction (failure causes broken data) ----
+            await _transaction.ResetProductStock(productId, initialStock);
+            var ordersBefore1 = await _transaction.GetOrderCount();
+
+            string error1 = "";
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<TransactionDemoService>();
+                await svc.BuyWithoutTransaction(
+                    userId: 1, productId: productId, quantity: 5, simulateFailure: true);
+            }
+            catch (Exception ex) { error1 = ex.Message; }
+
+            var stockAfterNoTx = await _transaction.GetProductStock(productId);
+            var ordersAfterNoTx = await _transaction.GetOrderCount();
+
+            var noTransactionResult = new
+            {
+                Scenario = "WITHOUT Transaction (simulateFailure = true)",
+                InitialStock = initialStock,
+                StockAfterFailure = stockAfterNoTx,
+                StockReduced = stockAfterNoTx < initialStock,
+                OrdersCreated = ordersAfterNoTx - ordersBefore1,
+                DataConsistent = false,
+                Problem = "Stock was reduced by 5 but NO order was created — data is BROKEN",
+                Error = error1
+            };
+
+            // ---- PHASE 2: WITH Transaction (failure causes clean rollback) ----
+            await _transaction.ResetProductStock(productId, initialStock);
+            var ordersBefore2 = await _transaction.GetOrderCount();
+
+            string error2 = "";
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<TransactionDemoService>();
+                await svc.BuyWithTransaction(
+                    userId: 1, productId: productId, quantity: 5, simulateFailure: true);
+            }
+            catch (Exception ex) { error2 = ex.Message; }
+
+            var stockAfterTx = await _transaction.GetProductStock(productId);
+            var ordersAfterTx = await _transaction.GetOrderCount();
+
+            var withTransactionResult = new
+            {
+                Scenario = "WITH Transaction / ACID (simulateFailure = true)",
+                InitialStock = initialStock,
+                StockAfterFailure = stockAfterTx,
+                StockReduced = stockAfterTx < initialStock,
+                OrdersCreated = ordersAfterTx - ordersBefore2,
+                DataConsistent = stockAfterTx == initialStock,
+                Result = "Transaction ROLLED BACK — stock unchanged, no orphan order. Data is SAFE",
+                Error = error2
+            };
+
+            // ---- PHASE 3: WITH Transaction (no failure — happy path) ----
+            await _transaction.ResetProductStock(productId, initialStock);
+            var ordersBefore3 = await _transaction.GetOrderCount();
+
+            string result3 = "";
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<TransactionDemoService>();
+                result3 = await svc.BuyWithTransaction(
+                    userId: 1, productId: productId, quantity: 5, simulateFailure: false);
+            }
+            catch (Exception ex) { result3 = ex.Message; }
+
+            var stockAfterSuccess = await _transaction.GetProductStock(productId);
+            var ordersAfterSuccess = await _transaction.GetOrderCount();
+
+            var successResult = new
+            {
+                Scenario = "WITH Transaction / ACID (simulateFailure = false — happy path)",
+                InitialStock = initialStock,
+                StockAfterSuccess = stockAfterSuccess,
+                ExpectedStock = initialStock - 5,
+                OrdersCreated = ordersAfterSuccess - ordersBefore3,
+                DataConsistent = stockAfterSuccess == initialStock - 5 && (ordersAfterSuccess - ordersBefore3) == 1,
+                Result = result3
+            };
+
+            // ---- PHASE 4: Concurrent ACID test ----
+            await _transaction.ResetProductStock(productId, initialStock);
+            var ordersBefore4 = await _transaction.GetOrderCount();
+            int successCount = 0, failCount = 0;
+
+            var concurrentTasks = Enumerable.Range(1, 20).Select(async i =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<TransactionDemoService>();
+                try
+                {
+                    await svc.BuyWithTransaction(
+                        userId: (i % 2) + 1, productId: productId, quantity: 1, simulateFailure: false);
+                    Interlocked.Increment(ref successCount);
+                }
+                catch { Interlocked.Increment(ref failCount); }
+            });
+            await Task.WhenAll(concurrentTasks);
+
+            var stockAfterConcurrent = await _transaction.GetProductStock(productId);
+            var ordersAfterConcurrent = await _transaction.GetOrderCount();
+            var newOrders = ordersAfterConcurrent - ordersBefore4;
+
+            var concurrentResult = new
+            {
+                Scenario = "20 Concurrent Transactions (ACID under load)",
+                InitialStock = initialStock,
+                StockAfterTest = stockAfterConcurrent,
+                ExpectedStock = initialStock - successCount,
+                SuccessfulOrders = successCount,
+                FailedOrders = failCount,
+                NewOrdersInDB = newOrders,
+                DataConsistent = stockAfterConcurrent == (initialStock - successCount) && newOrders == successCount
+            };
+
+            return Ok(new
+            {
+                Task = "Task 8: Transaction Integrity / ACID",
+                Phase1_WithoutTransaction = noTransactionResult,
+                Phase2_WithTransaction_Failure = withTransactionResult,
+                Phase3_WithTransaction_Success = successResult,
+                Phase4_ConcurrentACID = concurrentResult
             });
         }
     }

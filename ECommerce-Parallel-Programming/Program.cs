@@ -39,6 +39,11 @@ builder.Services.AddScoped<SalesBatchProcessingService>();
 builder.Services.AddScoped<ConcurrencyDemoService>();
 
 // ======================
+// Task 8: Transaction Integrity Service
+// ======================
+builder.Services.AddScoped<TransactionDemoService>();
+
+// ======================
 // Background Queue (AOP idea part)
 // ======================
 builder.Services.AddHostedService<QueuedHostedService>();

@@ -125,7 +125,7 @@ namespace Ecommerce.Infrastructure.Services
             var trace = new List<TraceStep>();
             var totalSw = Stopwatch.StartNew();
 
-            var productIds = new[] { 1, 2, 3, 1, 2, 3, 1, 2, 3, 1 };
+            var productIds = Enumerable.Range(0, 50).Select(i => (i % 3) + 1).ToArray();
 
             var stepSw = Stopwatch.StartNew();
             var products = new List<Product>();
@@ -133,9 +133,10 @@ namespace Ecommerce.Infrastructure.Services
             {
                 var p = await _context.Products.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
                 if (p != null) products.Add(p);
+                await Task.Delay(5);
             }
             stepSw.Stop();
-            trace.Add(new TraceStep($"BOTTLENECK: {productIds.Length} sequential DB queries", stepSw.ElapsedMilliseconds, $"Fetched {products.Count} products one-by-one"));
+            trace.Add(new TraceStep($"BOTTLENECK: {productIds.Length} sequential DB queries (5ms network latency each)", stepSw.ElapsedMilliseconds, $"Fetched {products.Count} products one-by-one"));
 
             totalSw.Stop();
             return new BenchmarkResult
@@ -157,7 +158,7 @@ namespace Ecommerce.Infrastructure.Services
             var trace = new List<TraceStep>();
             var totalSw = Stopwatch.StartNew();
 
-            var productIds = new[] { 1, 2, 3, 1, 2, 3, 1, 2, 3, 1 };
+            var productIds = Enumerable.Range(0, 50).Select(i => (i % 3) + 1).ToArray();
             var uniqueIds = productIds.Distinct().ToList();
 
             var stepSw = Stopwatch.StartNew();

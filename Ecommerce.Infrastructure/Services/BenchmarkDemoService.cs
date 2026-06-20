@@ -14,13 +14,6 @@ namespace Ecommerce.Infrastructure.Services
             _context = context;
         }
 
-        // =====================================================
-        // BEFORE OPTIMIZATION: Sequential Order Processing
-        // =====================================================
-        // Bottleneck: processes each order ONE BY ONE
-        // Each order has simulated I/O work (10ms per order)
-        // 100 orders = 100 * 10ms = ~1000ms total
-        // =====================================================
         public async Task<BenchmarkResult> ProcessOrders_Sequential()
         {
             var trace = new List<TraceStep>();
@@ -59,13 +52,7 @@ namespace Ecommerce.Infrastructure.Services
             };
         }
 
-        // =====================================================
-        // AFTER OPTIMIZATION: Batch + Parallel Processing
-        // =====================================================
-        // Fix: Group orders into batches, process batches in parallel
-        // 100 orders / 50 per batch = 2 batches processed in parallel
-        // Total time = ~10ms (one batch delay) instead of ~1000ms
-        // =====================================================
+
         public async Task<BenchmarkResult> ProcessOrders_Optimized()
         {
             var trace = new List<TraceStep>();
@@ -115,11 +102,6 @@ namespace Ecommerce.Infrastructure.Services
             };
         }
 
-        // =====================================================
-        // BEFORE: Sequential single-product lookup
-        // =====================================================
-        // Fetches products one-by-one in a loop
-        // =====================================================
         public async Task<BenchmarkResult> FetchProducts_Sequential()
         {
             var trace = new List<TraceStep>();
@@ -148,11 +130,6 @@ namespace Ecommerce.Infrastructure.Services
             };
         }
 
-        // =====================================================
-        // AFTER: Single batch query
-        // =====================================================
-        // Fetches all products in ONE query using WHERE IN
-        // =====================================================
         public async Task<BenchmarkResult> FetchProducts_Optimized()
         {
             var trace = new List<TraceStep>();

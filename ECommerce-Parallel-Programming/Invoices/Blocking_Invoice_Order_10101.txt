@@ -1,0 +1,15 @@
+===== BLOCKING INVOICE =====
+
+Order Id: 10101
+
+User Id: 1
+
+Product Id: 2
+
+Quantity: 1
+
+Total Price: 300.00
+
+Date: 18/06/2026 10:06:39 AM
+
+==============================

@@ -4,6 +4,7 @@ using Ecommerce.Application.Use_Cases;
 using Ecommerce.Infrastructure.Data;
 using Ecommerce.Infrastructure.Repositories;
 using Ecommerce.Infrastructure.Services;
+using ECommerce_Parallel_Programming.Middleware;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -86,10 +87,13 @@ app.UseSwaggerUI();
 app.MapGet("/", () => "API IS WORKING");
 
 // ======================
-// Middleware
+// AOP: Performance Monitoring Middleware
+// This single line enables monitoring for ALL endpoints
+// No controller code needs to change — that's AOP!
 // ======================
+app.UseMiddleware<PerformanceMonitoringMiddleware>();
 
-// app.UseHttpsRedirection(); // ممكن تتركيها أو تشيليها إذا عم تعمل مشاكل
+// app.UseHttpsRedirection();
 
 app.UseAuthorization();
 

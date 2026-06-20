@@ -13,20 +13,7 @@ namespace Ecommerce.Infrastructure.Services
             _context = context;
         }
 
-        // =====================================================
-        // WITHOUT TRANSACTION (demonstrates the problem)
-        // =====================================================
-        // The compound operation has 3 steps:
-        //   1. Validate payment (simulated)
-        //   2. Update stock
-        //   3. Create order
-        //
-        // Without a transaction, each SaveChangesAsync() is independent.
-        // If step 2 succeeds but step 3 fails:
-        //   - Stock is REDUCED (already saved to DB)
-        //   - But NO order exists
-        //   - Data is BROKEN — money taken, stock gone, no record
-        // =====================================================
+
         public async Task<string> BuyWithoutTransaction(int userId, int productId, int quantity, bool simulateFailure)
         {
             var product = await _context.Products
@@ -67,20 +54,7 @@ namespace Ecommerce.Infrastructure.Services
             return "Order completed (no transaction protection)";
         }
 
-        // =====================================================
-        // WITH TRANSACTION (ACID compliant)
-        // =====================================================
-        // All 3 steps are wrapped in a single transaction.
-        // SaveChangesAsync() writes to the DB but does NOT commit.
-        // Only CommitAsync() makes changes permanent.
-        // If anything fails → RollbackAsync() undoes EVERYTHING.
-        //
-        // ACID Properties demonstrated:
-        //   Atomicity   → all-or-nothing (commit or rollback)
-        //   Consistency → stock can't go negative, order always matches
-        //   Isolation   → other transactions don't see uncommitted changes
-        //   Durability  → once committed, survives crashes
-        // =====================================================
+ 
         public async Task<string> BuyWithTransaction(int userId, int productId, int quantity, bool simulateFailure)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();

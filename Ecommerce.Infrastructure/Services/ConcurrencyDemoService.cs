@@ -13,20 +13,6 @@ namespace Ecommerce.Infrastructure.Services
             _context = context;
         }
 
-        // =====================================================
-        // OPTIMISTIC LOCK (RowVersion)
-        // =====================================================
-        // How it works:
-        //   1. Read the product (including its RowVersion)
-        //   2. Update the stock
-        //   3. SaveChanges → EF sends: UPDATE ... WHERE Id=@id AND RowVersion=@oldVersion
-        //   4. If another instance changed the row first, RowVersion won't match
-        //      → EF throws DbUpdateConcurrencyException
-        //   5. We catch it and RETRY with fresh data
-        //
-        // This is like saying: "I'll try to update, but if someone beat me to it,
-        // I'll reload and try again."
-        // =====================================================
         public async Task<string> BuyWithOptimisticLock(int userId, int productId, int quantity)
         {
             int maxRetries = 3;
@@ -89,21 +75,6 @@ namespace Ecommerce.Infrastructure.Services
             throw new Exception("Optimistic Lock: Unexpected failure");
         }
 
-        // =====================================================
-        // PESSIMISTIC LOCK — DISTRIBUTED (sp_getapplock)
-        // =====================================================
-        // How it works:
-        //   1. Start a database TRANSACTION
-        //   2. Call sp_getapplock → SQL Server gives us a NAMED lock
-        //      Example: lock name = "Product_1" (for product with Id=1)
-        //   3. Since ALL instances share the same database,
-        //      only ONE instance can hold "Product_1" lock at a time
-        //   4. Other instances WAIT until the lock is released
-        //   5. Lock is automatically released when transaction commits/rollbacks
-        //
-        // This is like saying: "Database, hold everyone else back until I'm done
-        // with this product."
-        // =====================================================
         public async Task<string> BuyWithPessimisticLock(int userId, int productId, int quantity)
         {
             // Step 1: Start a database transaction
@@ -111,12 +82,7 @@ namespace Ecommerce.Infrastructure.Services
 
             try
             {
-                // Step 2: Acquire a distributed lock from SQL Server
-                // sp_getapplock creates a named lock within the database
-                // @Resource  = the lock name (we use "Product_{id}" so each product has its own lock)
-                // @LockMode  = 'Exclusive' means only one holder at a time
-                // @LockTimeout = 10000ms (10 seconds) max wait time
-                // @LockOwner = 'Transaction' means lock lives as long as the transaction
+
                 var lockName = $"Product_{productId}";
 
                 await _context.Database.ExecuteSqlRawAsync(
@@ -170,11 +136,6 @@ namespace Ecommerce.Infrastructure.Services
             }
         }
 
-        // =====================================================
-        // RESET stock (helper for testing)
-        // Uses raw SQL to bypass RowVersion check, and clears
-        // the change tracker so next queries get fresh data.
-        // =====================================================
         public async Task ResetProductStock(int productId, int stock)
         {
             await _context.Database.ExecuteSqlRawAsync(
